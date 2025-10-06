@@ -1007,7 +1007,7 @@ class ApiService {
           debugPrint('🔄 Attempting token refresh with phone: $phoneNo, role: $roleId');
           final refreshResult = await refreshJwtToken(
             phoneNo: phoneNo, 
-            roleId: int.parse(roleId)
+            roleId: roleId
           );
           
           if (refreshResult['success'] == true) {
