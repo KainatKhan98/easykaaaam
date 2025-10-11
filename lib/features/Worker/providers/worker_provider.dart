@@ -12,6 +12,13 @@ class WorkerProvider extends ChangeNotifier {
   String? _searchLocation;
   String? _errorMessage;
   
+  // Pagination State
+  int _currentPage = 1;
+  int _pageSize = 10;
+  bool _hasMoreJobs = true;
+  bool _isLoadingMore = false;
+  int _totalJobs = 0; // Track total jobs from API
+  
   // Worker Registration State
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
@@ -32,12 +39,26 @@ class WorkerProvider extends ChangeNotifier {
   // Apply for Job State
   bool _isApplyingForJob = false;
   String? _applyJobMessage;
+  String? _lastAppliedJobId;
+  
+  // Job Applicants State
+  List<Map<String, dynamic>> _jobApplicants = [];
+  bool _isLoadingApplicants = false;
+  String? _applicantsErrorMessage;
   
   // Getters
   List<Map<String, dynamic>> get availableJobs => _availableJobs;
   bool get isLoadingJobs => _isLoadingJobs;
   String? get searchLocation => _searchLocation;
   String? get errorMessage => _errorMessage;
+  
+  // Pagination Getters
+  int get currentPage => _currentPage;
+  int get pageSize => _pageSize;
+  bool get hasMoreJobs => _hasMoreJobs;
+  bool get isLoadingMore => _isLoadingMore;
+  int get totalPages => _totalJobs > 0 ? (_totalJobs / _pageSize).ceil() : (_availableJobs.length / _pageSize).ceil();
+  int get totalItems => _totalJobs > 0 ? _totalJobs : _availableJobs.length;
   
   // Registration Getters
   TextEditingController get usernameController => _usernameController;
@@ -58,6 +79,12 @@ class WorkerProvider extends ChangeNotifier {
   // Apply for Job Getters
   bool get isApplyingForJob => _isApplyingForJob;
   String? get applyJobMessage => _applyJobMessage;
+  String? get lastAppliedJobId => _lastAppliedJobId;
+  
+  // Job Applicants Getters
+  List<Map<String, dynamic>> get jobApplicants => _jobApplicants;
+  bool get isLoadingApplicants => _isLoadingApplicants;
+  String? get applicantsErrorMessage => _applicantsErrorMessage;
   
   // Profession Options
   final List<Map<String, dynamic>> _professionOptions = [
@@ -121,14 +148,28 @@ class WorkerProvider extends ChangeNotifier {
   //   }
   // }
 
-  Future<void> loadAvailableJobs() async {
+  Future<void> loadAvailableJobs({bool resetPagination = true}) async {
+    if (resetPagination) {
+      _currentPage = 1;
+      _availableJobs.clear();
+      _hasMoreJobs = true;
+      _totalJobs = 0;
+    }
+    
     _isLoadingJobs = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      // ✅ Fixed workerId for testing
-      final workerId = "f57e4f6e-a01d-4b5c-816c-49d20e1dd5dc";
+      // ✅ Get actual workerId from storage
+      final workerId = await ApiService.getWorkerId();
+      
+      if (workerId == null) {
+        _errorMessage = "Worker ID not found. Please register as a worker first.";
+        _isLoadingJobs = false;
+        notifyListeners();
+        return;
+      }
 
       // ✅ Get stored token
       final token = await ApiService.getJwtToken();
@@ -139,21 +180,38 @@ class WorkerProvider extends ChangeNotifier {
         final double fixedLon = 72;
 
         debugPrint("📍 Using Fixed Location: $fixedLat, $fixedLon");
-        debugPrint("🔑 Using Fixed Worker ID: $workerId");
+        debugPrint("🔑 Using Actual Worker ID: $workerId");
+        debugPrint("📄 Loading page $_currentPage with $_pageSize items per page");
 
-        // ✅ Send fixed coordinates to API
-        _availableJobs = await ApiService.testGetAvailableJobs(
+        // ✅ Send fixed coordinates to API with pagination
+        final newJobs = await ApiService.testGetAvailableJobs(
           workerId: workerId,
           token: token,
           lat: fixedLat,
           lon: fixedLon,
+          pageNumber: _currentPage,
+          pageSize: _pageSize,
         );
 
-        debugPrint("✅ Loaded ${_availableJobs.length} jobs from API");
+        // For pagination, we replace the current jobs (don't append)
+        _availableJobs = newJobs;
+
+        // Check if there are more jobs to load
+        _hasMoreJobs = newJobs.length == _pageSize;
+        
+        // Estimate total jobs based on current page and items
+        if (_hasMoreJobs) {
+          _totalJobs = (_currentPage * _pageSize) + 1; // At least one more page
+        } else {
+          _totalJobs = (_currentPage - 1) * _pageSize + newJobs.length;
+        }
+
+        debugPrint("✅ Loaded ${newJobs.length} jobs from API (Page $_currentPage)");
+        debugPrint("📊 Total jobs: ${_availableJobs.length}, Has more: $_hasMoreJobs, Estimated total: $_totalJobs");
         
         // Debug distance values
-        for (int i = 0; i < _availableJobs.length; i++) {
-          final job = _availableJobs[i];
+        for (int i = 0; i < newJobs.length; i++) {
+          final job = newJobs[i];
           debugPrint("📍 Job $i - distanceKm: ${job["distanceKm"]}, distance: ${job["distance"]}");
         }
       } else {
@@ -246,6 +304,15 @@ class WorkerProvider extends ChangeNotifier {
       final status = result['statusCode'];
       if (status == 200 || status == 201) {
         _isRegistered = true;
+        
+        // Check if workerId was returned and stored
+        final workerId = result['workerId'];
+        if (workerId != null) {
+          debugPrint('✅ Worker registration successful with ID: $workerId');
+        } else {
+          debugPrint('⚠️ Worker registration successful but no workerId returned');
+        }
+        
         _clearRegistrationFields();
       }
       
@@ -305,9 +372,149 @@ class WorkerProvider extends ChangeNotifier {
     }).toList();
   }
   
+  // Load More Jobs (for pagination)
+  Future<void> loadMoreJobs() async {
+    if (!_hasMoreJobs || _isLoadingMore || _isLoadingJobs) {
+      return;
+    }
+
+    _isLoadingMore = true;
+    _currentPage++;
+    notifyListeners();
+
+    try {
+      // ✅ Get actual workerId from storage
+      final workerId = await ApiService.getWorkerId();
+      
+      if (workerId == null) {
+        debugPrint("❌ Worker ID not found for loading more jobs");
+        _isLoadingMore = false;
+        notifyListeners();
+        return;
+      }
+
+      // ✅ Get stored token
+      final token = await ApiService.getJwtToken();
+
+      if (token != null) {
+        // ✅ Fixed coordinates for testing (Lat=32, Lon=72)
+        final double fixedLat = 32;
+        final double fixedLon = 72;
+
+        debugPrint("📄 Loading more jobs - Page $_currentPage with workerId: $workerId");
+
+        // ✅ Send fixed coordinates to API with pagination
+        final newJobs = await ApiService.testGetAvailableJobs(
+          workerId: workerId,
+          token: token,
+          lat: fixedLat,
+          lon: fixedLon,
+          pageNumber: _currentPage,
+          pageSize: _pageSize,
+        );
+
+        _availableJobs.addAll(newJobs);
+
+        // Check if there are more jobs to load
+        _hasMoreJobs = newJobs.length == _pageSize;
+
+        debugPrint("✅ Loaded ${newJobs.length} more jobs (Page $_currentPage)");
+        debugPrint("📊 Total jobs: ${_availableJobs.length}, Has more: $_hasMoreJobs");
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading more jobs: $e');
+      // Revert page number on error
+      _currentPage--;
+    } finally {
+      _isLoadingMore = false;
+      notifyListeners();
+    }
+  }
+
+  // Navigate to specific page
+  Future<void> goToPage(int page) async {
+    if (page < 1 || page == _currentPage || _isLoadingMore) {
+      return;
+    }
+
+    _isLoadingMore = true;
+    notifyListeners();
+
+    try {
+      // ✅ Get actual workerId from storage
+      final workerId = await ApiService.getWorkerId();
+      
+      if (workerId == null) {
+        debugPrint("❌ Worker ID not found for page navigation");
+        _isLoadingMore = false;
+        notifyListeners();
+        return;
+      }
+
+      // ✅ Get stored token
+      final token = await ApiService.getJwtToken();
+
+      if (token != null) {
+        // ✅ Fixed coordinates for testing (Lat=32, Lon=72)
+        final double fixedLat = 32;
+        final double fixedLon = 72;
+
+        debugPrint("📄 Navigating to page $page with workerId: $workerId");
+
+        // ✅ Send fixed coordinates to API with pagination
+        final newJobs = await ApiService.testGetAvailableJobs(
+          workerId: workerId,
+          token: token,
+          lat: fixedLat,
+          lon: fixedLon,
+          pageNumber: page,
+          pageSize: _pageSize,
+        );
+
+        // Update current page and jobs
+        _currentPage = page;
+        _availableJobs = newJobs;
+
+        // Check if there are more jobs to load
+        _hasMoreJobs = newJobs.length == _pageSize;
+        
+        // Update total jobs estimate
+        if (_hasMoreJobs) {
+          _totalJobs = (_currentPage * _pageSize) + 1;
+        } else {
+          _totalJobs = (_currentPage - 1) * _pageSize + newJobs.length;
+        }
+
+        debugPrint("✅ Loaded page $page with ${newJobs.length} jobs");
+        debugPrint("📊 Total jobs: ${_availableJobs.length}, Has more: $_hasMoreJobs, Estimated total: $_totalJobs");
+      }
+    } catch (e) {
+      debugPrint('❌ Error navigating to page $page: $e');
+      // Revert page number on error
+      _currentPage = 1;
+    } finally {
+      _isLoadingMore = false;
+      notifyListeners();
+    }
+  }
+
+  // Go to previous page
+  Future<void> goToPreviousPage() async {
+    if (_currentPage > 1) {
+      await goToPage(_currentPage - 1);
+    }
+  }
+
+  // Go to next page
+  Future<void> goToNextPage() async {
+    if (_currentPage < totalPages) {
+      await goToPage(_currentPage + 1);
+    }
+  }
+
   // Refresh Jobs
   Future<void> refreshJobs() async {
-    await loadAvailableJobs();
+    await loadAvailableJobs(resetPagination: true);
   }
   
   // Apply for Job
@@ -321,17 +528,20 @@ class WorkerProvider extends ChangeNotifier {
     try {
       debugPrint('🎯 Starting apply for job with jobId: $jobId');
       
-      final workerId = await ApiService.getUserId();
-      debugPrint('👤 Worker ID: $workerId');
+      // Get actual workerId from storage
+      final workerId = await ApiService.getWorkerId();
       
       if (workerId == null) {
-        _applyJobMessage = 'Worker ID not found';
-        debugPrint('❌ Worker ID is null');
+        _applyJobMessage = 'Worker ID not found. Please register as a worker first.';
+        debugPrint('❌ Worker ID not found for apply for job');
         return {
           'success': false,
           'message': _applyJobMessage,
+          'error': 'Worker ID not found',
         };
       }
+      
+      debugPrint('👤 Using actual Worker ID for apply for job: $workerId');
 
       debugPrint('📡 Calling ApiService.applyForJob with jobId: $jobId, workerId: $workerId');
       
@@ -344,7 +554,9 @@ class WorkerProvider extends ChangeNotifier {
 
       if (result['success'] == true) {
         _applyJobMessage = 'Successfully applied for job!';
+        _lastAppliedJobId = result['jobId'] ?? jobId; // Store jobId from response or use parameter
         debugPrint('✅ Successfully applied for job: $jobId');
+        debugPrint('📝 Stored jobId: $_lastAppliedJobId');
       } else {
         _applyJobMessage = result['message'] ?? 'Failed to apply for job';
         debugPrint('❌ Failed to apply for job: ${result['message']}');
@@ -369,6 +581,81 @@ class WorkerProvider extends ChangeNotifier {
   // Clear Apply Job Message
   void clearApplyJobMessage() {
     _applyJobMessage = null;
+    notifyListeners();
+  }
+  
+  // Get Job Applicants using stored jobId
+  Future<void> getJobApplicantsForLastAppliedJob({int pageNumber = 1, int pageSize = 15}) async {
+    if (_lastAppliedJobId == null) {
+      _applicantsErrorMessage = 'No job ID available. Please apply for a job first.';
+      notifyListeners();
+      return;
+    }
+    
+    _isLoadingApplicants = true;
+    _applicantsErrorMessage = null;
+    notifyListeners();
+    
+    try {
+      debugPrint('🔍 Getting job applicants for stored jobId: $_lastAppliedJobId');
+      
+      final result = await ApiService.getAllJobApplicants(
+        jobId: _lastAppliedJobId!,
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+      );
+      
+      if (result['success'] == true) {
+        _jobApplicants = List<Map<String, dynamic>>.from(result['data'] ?? []);
+        debugPrint('✅ Loaded ${_jobApplicants.length} job applicants for job: $_lastAppliedJobId');
+      } else {
+        _applicantsErrorMessage = result['message'] ?? 'Failed to load applicants';
+        debugPrint('❌ Error loading job applicants: ${_applicantsErrorMessage}');
+      }
+    } catch (e) {
+      _applicantsErrorMessage = 'Error loading applicants: ${e.toString()}';
+      debugPrint('💥 Exception loading job applicants: $e');
+    } finally {
+      _isLoadingApplicants = false;
+      notifyListeners();
+    }
+  }
+  
+  // Get Job Applicants using specific jobId
+  Future<void> getJobApplicants(String jobId, {int pageNumber = 1, int pageSize = 15}) async {
+    _isLoadingApplicants = true;
+    _applicantsErrorMessage = null;
+    notifyListeners();
+    
+    try {
+      debugPrint('🔍 Getting job applicants for jobId: $jobId');
+      
+      final result = await ApiService.getAllJobApplicants(
+        jobId: jobId,
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+      );
+      
+      if (result['success'] == true) {
+        _jobApplicants = List<Map<String, dynamic>>.from(result['data'] ?? []);
+        debugPrint('✅ Loaded ${_jobApplicants.length} job applicants for job: $jobId');
+      } else {
+        _applicantsErrorMessage = result['message'] ?? 'Failed to load applicants';
+        debugPrint('❌ Error loading job applicants: ${_applicantsErrorMessage}');
+      }
+    } catch (e) {
+      _applicantsErrorMessage = 'Error loading applicants: ${e.toString()}';
+      debugPrint('💥 Exception loading job applicants: $e');
+    } finally {
+      _isLoadingApplicants = false;
+      notifyListeners();
+    }
+  }
+  
+  // Clear Job Applicants
+  void clearJobApplicants() {
+    _jobApplicants.clear();
+    _applicantsErrorMessage = null;
     notifyListeners();
   }
   

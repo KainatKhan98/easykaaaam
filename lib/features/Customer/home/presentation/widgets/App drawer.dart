@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../Worker/EarnWithEasyKaam/Presentation/Pages/Earnscreen.dart';
 import '../../../../Worker/home/presentation/pages/worker_home_page.dart';
 import '../../../../support/presentation/pages/Customer_support_screen.dart';
+import '../../../AcceptRequest/presentation/pages/Accept_Request.dart'; // 👈 Import Accept Request screen
 import '../pages/home_page.dart';
 import '../../../../../core/services/api_service.dart';
 import 'dart:async';
@@ -34,7 +35,7 @@ class _AppDrawerState extends State<AppDrawer> {
         }
       }
     } catch (e) {
-      debugPrint('Error loading profile image: $e');
+      debugPrint('❌ Error loading profile image: $e');
     }
     return null;
   }
@@ -47,7 +48,7 @@ class _AppDrawerState extends State<AppDrawer> {
       backgroundColor: Colors.white,
       child: Column(
         children: [
-          // 🧑‍🦱 Profile Header (same as Worker Drawer)
+          // 🧑 Profile Header
           FutureBuilder<String?>(
             future: _profileImageFuture,
             builder: (context, snapshot) {
@@ -63,7 +64,8 @@ class _AppDrawerState extends State<AppDrawer> {
                       backgroundImage:
                       imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
                       child: imageUrl.isEmpty
-                          ? const Icon(Icons.person, size: 40, color: Colors.grey)
+                          ? const Icon(Icons.person,
+                          size: 40, color: Colors.grey)
                           : null,
                     ),
                     const SizedBox(width: 16),
@@ -109,7 +111,8 @@ class _AppDrawerState extends State<AppDrawer> {
               children: [
                 ListTile(
                   leading: const Icon(Icons.help_outline, color: iconColor),
-                  title: const Text('Help', style: TextStyle(color: Colors.black)),
+                  title:
+                  const Text('Help', style: TextStyle(color: Colors.black)),
                   onTap: () => Navigator.pop(context),
                 ),
                 ListTile(
@@ -120,7 +123,8 @@ class _AppDrawerState extends State<AppDrawer> {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const CustomerSupportScreen()),
+                      MaterialPageRoute(
+                          builder: (_) => const CustomerSupportScreen()),
                     );
                   },
                 ),
@@ -138,7 +142,8 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 ListTile(
                   leading: const Icon(Icons.work_outline, color: iconColor),
-                  title: const Text('Jobs', style: TextStyle(color: Colors.black)),
+                  title:
+                  const Text('Jobs', style: TextStyle(color: Colors.black)),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -147,29 +152,33 @@ class _AppDrawerState extends State<AppDrawer> {
                     );
                   },
                 ),
+
+               
                 const Divider(),
                 ListTile(
                   leading: const Icon(Icons.settings, color: iconColor),
-                  title: const Text('Settings', style: TextStyle(color: Colors.black)),
+                  title: const Text('Settings',
+                      style: TextStyle(color: Colors.black)),
                   onTap: () => Navigator.pop(context),
                 ),
                 ListTile(
                   leading: const Icon(Icons.logout, color: iconColor),
-                  title: const Text('Logout', style: TextStyle(color: Colors.black)),
+                  title: const Text('Logout',
+                      style: TextStyle(color: Colors.black)),
                   onTap: () => Navigator.pop(context),
                 ),
               ],
             ),
           ),
 
-          // 🔘 Bottom Button
+          // 🔘 Worker Button
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: _checkRegistrationStatus, // 👈 directly call the async method
+                onPressed: _checkRegistrationStatus,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF25B0F0),
                   minimumSize: const Size(double.infinity, 50),
@@ -178,122 +187,52 @@ class _AppDrawerState extends State<AppDrawer> {
                   ),
                 ),
                 child: const Text(
-                  "worker",
+                  "Worker",
                   style: TextStyle(fontSize: 16, color: Colors.white),
                 ),
               ),
-
             ),
           ),
         ],
       ),
     );
   }
+
+
+  /// ✅ Checks registration and navigates directly.
   Future<void> _checkRegistrationStatus() async {
     try {
-      debugPrint("🔍 Checking if user is already registered as worker...");
+      debugPrint("🔍 Checking worker registration status...");
 
-      // Show loading dialog
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(color: Colors.blue),
-        ),
+        builder: (context) =>
+        const Center(child: CircularProgressIndicator(color: Colors.blue)),
       );
 
-      // API call
       final isRegistered = await ApiService.checkWorkerRegistration();
 
-      if (mounted) Navigator.of(context).pop(); // close loading
+      if (mounted) Navigator.of(context).pop();
 
-      if (mounted) {
-        if (isRegistered) {
-          _showRegistrationStatusDialog(
-            title: "Already Registered!",
-            message: "You are already registered as a worker. Redirecting to your dashboard...",
-            isSuccess: true,
-            onConfirm: () {
-              Navigator.of(context).pushReplacementNamed('/worker-home');
-            },
-          );
-        } else {
-          _showRegistrationStatusDialog(
-            title: "Not Registered",
-            message: "You are not registered as a worker yet. Please fill out the registration form above to get started!",
-            isSuccess: false,
-            onConfirm: () {},
-          );
-        }
+      if (!mounted) return;
+
+      if (isRegistered) {
+        debugPrint("✅ Worker already registered — navigating to WorkerHomePage");
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const WorkerHomePage()),
+        );
+      } else {
+        debugPrint("⚠️ Not registered — navigating to EarnScreen");
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const EarnScreen()),
+        );
       }
     } catch (e) {
       if (mounted) Navigator.of(context).pop();
-      debugPrint('Error checking registration status: $e');
-
-      if (mounted) {
-        _showRegistrationStatusDialog(
-          title: "Error",
-          message: "Could not check your registration status. Please try again or contact support.",
-          isSuccess: false,
-          onConfirm: () {},
-        );
-      }
+      debugPrint('❌ Error checking registration status: $e');
     }
   }
-
-  void _showRegistrationStatusDialog({
-    required String title,
-    required String message,
-    required bool isSuccess,
-    required VoidCallback onConfirm,
-  }) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        title: Row(
-          children: [
-            Icon(
-              isSuccess ? Icons.check_circle : Icons.info,
-              color: isSuccess ? Colors.green : Colors.blue,
-              size: 28,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isSuccess ? Colors.green : Colors.blue,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          message,
-          style: const TextStyle(fontSize: 16, color: Colors.black87),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              onConfirm();
-            },
-            child: Text(
-              isSuccess ? "Go to Dashboard" : "Got it",
-              style: TextStyle(
-                color: isSuccess ? Colors.green : Colors.blue,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
 }

@@ -1,7 +1,9 @@
 import 'package:easykaaaam/features/Worker/Customer_search/Presentation/pages/Customer_Search.dart';
+import 'package:easykaaaam/features/Customer/AcceptRequest/presentation/pages/Accept_Request.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../home/presentation/pages/worker_home_page.dart';
 import '../../../providers/worker_provider.dart';
 
 
@@ -34,32 +36,41 @@ class _ApplyRequestScreenState extends State<ApplyRequestScreen> {
     }
 
     debugPrint('📋 Job data: ${widget.jobData}');
-    
+
     final workerProvider = Provider.of<WorkerProvider>(context, listen: false);
-    
-    final jobId = widget.jobData!['id']?.toString() ?? 
-                 widget.jobData!['jobId']?.toString();
-    
+
+    final jobId = widget.jobData!['id']?.toString() ??
+        widget.jobData!['jobId']?.toString();
+
     debugPrint('🆔 Extracted jobId: $jobId');
-    debugPrint('🆔 Available keys in jobData: ${widget.jobData!.keys.toList()}');
-    
+
     if (jobId == null) {
       _showErrorSnackBar('Job ID not found in job data');
       return;
     }
 
-    debugPrint('🚀 Calling workerProvider.applyForJob with jobId: $jobId');
+    debugPrint('🚀 Applying for job...');
     final result = await workerProvider.applyForJob(jobId: jobId);
 
     if (result['success'] == true) {
       _showSuccessSnackBar('Successfully applied for job!');
+      
+      // Get the jobId from the response or stored value
+      final appliedJobId = result['jobId'] ?? workerProvider.lastAppliedJobId ?? jobId;
+      
+      debugPrint('🎯 Job applied successfully with jobId: $appliedJobId');
+      debugPrint('🎯 Navigating to AcceptRequestScreen with jobId: $appliedJobId');
 
-      // Navigate to ServiceSearchPage after 1 second
+      // Navigate to AcceptRequestScreen with the jobId from apply-for-job response
       Future.delayed(const Duration(seconds: 1), () {
         if (mounted) {
-          Navigator.pushReplacement(
+          debugPrint('🎯 Worker: Navigating to AcceptRequestScreen with jobId: $appliedJobId');
+          Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (_) => const CustomerMapSearch()),
+            MaterialPageRoute(
+              builder: (_) => AcceptRequestScreen(jobId: appliedJobId),
+            ),
+            (route) => false, // Remove all previous routes
           );
         }
       });
@@ -67,6 +78,7 @@ class _ApplyRequestScreenState extends State<ApplyRequestScreen> {
       _showErrorSnackBar(result['message'] ?? 'Failed to apply for job');
     }
   }
+
 
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(

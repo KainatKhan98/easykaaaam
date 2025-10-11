@@ -119,6 +119,22 @@ class AuthProvider extends ChangeNotifier {
     }
   }
   
+  // Force reinitialize auth state (useful for hot restart)
+  Future<void> forceReinitialize() async {
+    // Reset state without notifying listeners first
+    _isLoading = false;
+    _isAuthenticated = false;
+    _userId = null;
+    _userPhone = null;
+    _userRole = null;
+    _jwtToken = null;
+    _refreshToken = null;
+    _profileImageUrl = null;
+    
+    // Then initialize
+    await initializeAuth();
+  }
+  
   // Update profile image
   Future<void> updateProfileImage(String imageUrl) async {
     _profileImageUrl = imageUrl;

@@ -33,6 +33,13 @@ class CustomerProvider extends ChangeNotifier {
   bool _isLoadingSubServices = false;
   String _searchQuery = '';
   
+  // Job Applicants State
+  List<Map<String, dynamic>> _jobApplicants = [];
+  bool _isLoadingApplicants = false;
+  String? _applicantsErrorMessage;
+  String? _currentJobId;
+  
+  
   // Getters
   List<Map<String, dynamic>> get categories => _categories;
   bool get isLoadingCategories => _isLoadingCategories;
@@ -60,6 +67,13 @@ class CustomerProvider extends ChangeNotifier {
   bool get isLoadingSubServices => _isLoadingSubServices;
   String get searchQuery => _searchQuery;
   
+  // Job Applicants Getters
+  List<Map<String, dynamic>> get jobApplicants => _jobApplicants;
+  bool get isLoadingApplicants => _isLoadingApplicants;
+  String? get applicantsErrorMessage => _applicantsErrorMessage;
+  String? get currentJobId => _currentJobId;
+  
+  
   // Service Options
   final Map<String, int> _allServiceOptions = {
     'Plumber': 1,
@@ -67,12 +81,6 @@ class CustomerProvider extends ChangeNotifier {
     'Sweeper': 3,
     'Carpenter': 4,
     'Painter': 5,
-    'HVAC': 6,
-    'Appliance Repair': 7,
-    'Landscaping': 8,
-    'Security': 9,
-    'Maintenance': 10,
-    'IT Support': 11,
     'Other': 99,
   };
   
@@ -280,6 +288,45 @@ class CustomerProvider extends ChangeNotifier {
       return name.contains(_searchQuery.toLowerCase());
     }).toList();
   }
+  
+  // Job Applicants Methods
+  Future<void> loadJobApplicants(String jobId, {int pageNumber = 1, int pageSize = 15}) async {
+    _isLoadingApplicants = true;
+    _applicantsErrorMessage = null;
+    _currentJobId = jobId;
+    notifyListeners();
+    
+    try {
+      final result = await ApiService.getAllJobApplicants(
+        jobId: jobId,
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+      );
+      
+      if (result['success'] == true) {
+        _jobApplicants = List<Map<String, dynamic>>.from(result['data'] ?? []);
+        debugPrint('✅ Loaded ${_jobApplicants.length} job applicants');
+      } else {
+        _applicantsErrorMessage = result['message'] ?? 'Failed to load applicants';
+        debugPrint('❌ Error loading job applicants: ${_applicantsErrorMessage}');
+      }
+    } catch (e) {
+      _applicantsErrorMessage = 'Error loading applicants: ${e.toString()}';
+      debugPrint('💥 Exception loading job applicants: $e');
+    } finally {
+      _isLoadingApplicants = false;
+      notifyListeners();
+    }
+  }
+  
+  void clearApplicants() {
+    _jobApplicants.clear();
+    _applicantsErrorMessage = null;
+    _currentJobId = null;
+    notifyListeners();
+  }
+  
+  
   
   // Helper Methods
   Map<String, int>? _parseFeeRange(String feeText) {

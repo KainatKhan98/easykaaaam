@@ -21,6 +21,9 @@ class SplashProvider extends ChangeNotifier {
     notifyListeners();
     
     try {
+      // Wait a bit for splash effect
+      await Future.delayed(const Duration(milliseconds: 500));
+      
       // Check authentication status
       final isAuthenticated = await ApiService.isAuthenticated();
       
@@ -53,11 +56,22 @@ class SplashProvider extends ChangeNotifier {
     await initializeApp();
   }
   
-  // Reset splash state
-  void resetSplashState() {
+  // Reset splash state (without notifying listeners)
+  void _resetSplashState() {
     _isLoading = true;
     _isInitialized = false;
     _errorMessage = null;
+  }
+  
+  // Reset splash state (public method)
+  void resetSplashState() {
+    _resetSplashState();
     notifyListeners();
+  }
+  
+  // Force reinitialize app (useful for hot restart)
+  Future<void> forceReinitialize() async {
+    _resetSplashState(); // Don't notify listeners during reset
+    await initializeApp();
   }
 }

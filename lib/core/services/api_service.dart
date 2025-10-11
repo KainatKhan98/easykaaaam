@@ -115,6 +115,29 @@ class ApiService {
     }
   }
 
+  // Worker ID storage methods
+  static Future<void> storeWorkerId(String workerId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('workerId', workerId);
+      debugPrint('💾 Stored workerId: $workerId');
+    } catch (e) {
+      debugPrint('Error storing workerId: $e');
+    }
+  }
+
+  static Future<String?> getWorkerId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final workerId = prefs.getString('workerId');
+      debugPrint('📖 Retrieved workerId: $workerId');
+      return workerId;
+    } catch (e) {
+      debugPrint('Error retrieving workerId: $e');
+      return null;
+    }
+  }
+
   static Future<void> clearAuthData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -123,6 +146,7 @@ class ApiService {
       await prefs.remove(_refreshKey);
       await prefs.remove(_phoneKey);
       await prefs.remove(_roleKey);
+      await prefs.remove('workerId');
     } catch (e) {
       debugPrint('Error clearing auth data: $e');
     }
@@ -137,16 +161,16 @@ class ApiService {
     try {
       final token = await getJwtToken();
       final refreshToken = await _getStoredRefreshToken();
-      
+
       if (token == null || token.isEmpty || refreshToken == null || refreshToken.isEmpty) {
         return false;
       }
-      
+
       final isValid = await _validateCurrentToken(token);
       if (isValid) {
         return true;
       }
-      
+
       final refreshResult = await _attemptTokenRefresh();
       return refreshResult;
     } catch (e) {
@@ -168,19 +192,19 @@ class ApiService {
     try {
       final refreshToken = await _getStoredRefreshToken();
       if (refreshToken == null) return false;
-      
+
       final phoneNo = await getUserPhone();
       final roleId = await getUserRole();
-      
+
       if (phoneNo == null || roleId == null) {
         return false;
       }
-      
+
       final result = await refreshJwtToken(
         phoneNo: phoneNo,
         roleId: roleId,
       );
-      
+
       return result['success'] == true;
     } catch (e) {
       debugPrint('Error attempting token refresh: $e');
@@ -325,13 +349,13 @@ class ApiService {
   static Future<Map<String, dynamic>> sendOtp(String name, String phoneNo) async {
     try {
       final url = Uri.parse('${ApiConstants.baseUrl}api/users/send-otp');
-      
+
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json', 'accept': '*/*'},
         body: jsonEncode({"name": name, "phoneNo": phoneNo}),
       );
-      
+
       final data = jsonDecode(response.body);
       if (response.statusCode == 200) {
         return {'success': true, 'message': 'OTP sent successfully'};
@@ -572,7 +596,7 @@ class ApiService {
           ..fields['userId'] = userId
           ..fields['workRadius'] = '0'
           ..fields['extraDetails'] = 'check'
-          ..fields['Key'] = '2';
+          ..fields['Key'] = '2'; // Correct value
 
         // 🔒 Force timeout here
         final streamedResponse = await request.send().timeout(
@@ -645,11 +669,11 @@ class ApiService {
         ..fields['userId'] = userId
         ..fields['workRadius'] = workRadius
         ..fields['extraDetails'] = extraDetails
-        ..fields['Key'] = "2"; // must be 2
+        ..fields['Key'] = "2"; // Correct value
 
-      // 🔒 Do NOT change professions logic
+      // 🔒 Updated to match curl request format
       for (var profession in professions) {
-        request.fields['professions[]'] = profession;
+        request.fields['professions'] = profession;
         debugPrint('➕ Adding profession: $profession');
       }
 
@@ -690,9 +714,34 @@ class ApiService {
         debugPrint("📥 Response Code: ${response.statusCode}");
         debugPrint("📄 Response Body: $decodedBody");
 
+        // Extract workerId from response if available
+        String? workerId;
+        if (decodedBody != null && decodedBody is Map<String, dynamic>) {
+          workerId = decodedBody['workerId']?.toString() ?? 
+                     decodedBody['id']?.toString() ?? 
+                     decodedBody['worker_id']?.toString();
+          
+          // Check in nested data object
+          if (workerId == null && decodedBody['data'] != null) {
+            final data = decodedBody['data'];
+            if (data is Map<String, dynamic>) {
+              workerId = data['workerId']?.toString() ?? 
+                         data['id']?.toString() ?? 
+                         data['worker_id']?.toString();
+            }
+          }
+        }
+
+        // Store workerId if found
+        if (workerId != null && workerId.isNotEmpty) {
+          await storeWorkerId(workerId);
+          debugPrint('✅ Worker registered with ID: $workerId');
+        }
+
         return {
           "statusCode": response.statusCode,
           "body": decodedBody,
+          "workerId": workerId,
         };
       } catch (e, stack) {
         debugPrint("❌ Network/Request error: $e");
@@ -754,6 +803,8 @@ class ApiService {
   }
 
   ///Create Job API
+  // Updated createJob method in ApiService class
+
   static Future<Map<String, dynamic>> createJob({
     required String title,
     required String description,
@@ -803,18 +854,18 @@ class ApiService {
       }
 
       // 🔍 Debug log
-      print("➡️ Sending request to: $url");
-      print("➡️ Headers: ${request.headers}");
-      print("➡️ Fields:");
-      request.fields.forEach((key, value) => print("   $key: $value"));
-      print("➡️ Files: ${request.files.map((f) => f.filename).toList()}");
+      debugPrint("➡️ Sending request to: $url");
+      debugPrint("➡️ Headers: ${request.headers}");
+      debugPrint("➡️ Fields:");
+      request.fields.forEach((key, value) => debugPrint("   $key: $value"));
+      debugPrint("➡️ Files: ${request.files.map((f) => f.filename).toList()}");
 
       // ✅ Send request
       final response = await request.send();
       final responseBody = await response.stream.bytesToString();
 
-      print("⬅️ Response Code: ${response.statusCode}");
-      print("⬅️ Response Body: $responseBody");
+      debugPrint("⬅️ Response Code: ${response.statusCode}");
+      debugPrint("⬅️ Response Body: $responseBody");
 
       // ✅ Decode safely
       Map<String, dynamic>? decoded;
@@ -825,7 +876,44 @@ class ApiService {
       }
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        return {"success": true, "data": decoded};
+        // ✅ Extract jobId from various possible response structures
+        String? jobId;
+
+        // Check different possible locations for jobId
+        if (decoded != null) {
+          // Direct jobId field
+          jobId = decoded['jobId']?.toString() ??
+              decoded['id']?.toString() ??
+              decoded['JobId']?.toString();
+
+          // Check in nested data object
+          if (jobId == null && decoded['data'] != null) {
+            final data = decoded['data'];
+            if (data is Map<String, dynamic>) {
+              jobId = data['jobId']?.toString() ??
+                  data['id']?.toString() ??
+                  data['JobId']?.toString();
+            }
+          }
+
+          // Check in nested job object
+          if (jobId == null && decoded['job'] != null) {
+            final job = decoded['job'];
+            if (job is Map<String, dynamic>) {
+              jobId = job['jobId']?.toString() ??
+                  job['id']?.toString() ??
+                  job['JobId']?.toString();
+            }
+          }
+        }
+
+        debugPrint("✅ Job created with ID: $jobId");
+
+        return {
+          "success": true,
+          "data": decoded,
+          "jobId": jobId, // Include jobId at root level for easy access
+        };
       } else if (response.statusCode == 401) {
         return {"success": false, "error": "Unauthorized"};
       } else {
@@ -836,7 +924,8 @@ class ApiService {
         };
       }
     } catch (e, stackTrace) {
-      log("❌ Exception in createJob: $e", stackTrace: stackTrace);
+      debugPrint("❌ Exception in createJob: $e");
+      debugPrint("📜 Stack trace: $stackTrace");
       return {"success": false, "error": e.toString()};
     }
   }
@@ -849,8 +938,8 @@ class ApiService {
     required double lon,
     int pageNumber = 1,
     int pageSize = 10,
-    double radiusKm = 1000.0,
-}) async {
+    double radiusKm = 4000.0,
+  }) async {
     try {
       final url = Uri.parse("${ApiConstants.baseUrl}api/worker-details/get-avaliable-jobs");
 
@@ -927,7 +1016,7 @@ class ApiService {
     try {
       final token = await getJwtToken();
       debugPrint('🔑 Retrieved JWT token: ${token?.substring(0, 20)}...');
-      
+
       if (token == null) {
         debugPrint('❌ No JWT token found in storage');
         throw Exception('No authentication token found');
@@ -940,7 +1029,7 @@ class ApiService {
         'jobId': jobId,
         'workerId': workerId,
       };
-      
+
       debugPrint('📦 Request body: ${jsonEncode(requestBody)}');
       debugPrint('📋 Request headers: Authorization: Bearer ${token.substring(0, 20)}..., Accept: */*, Content-Type: application/json');
 
@@ -965,6 +1054,7 @@ class ApiService {
             'success': true,
             'message': 'Successfully applied for job',
             'data': null,
+            'jobId': jobId, // Include jobId in response
           };
         } else {
           return {
@@ -995,24 +1085,25 @@ class ApiService {
           'success': true,
           'message': 'Successfully applied for job',
           'data': data,
+          'jobId': jobId, // Include jobId in response
         };
       } else if (response.statusCode == 401) {
         debugPrint('🔐 Unauthorized (401) - Token may be expired, attempting to refresh...');
-        
+
         // Try to refresh the token
         final phoneNo = await getUserPhone();
         final roleId = await getUserRole();
-        
+
         if (phoneNo != null && roleId != null) {
           debugPrint('🔄 Attempting token refresh with phone: $phoneNo, role: $roleId');
           final refreshResult = await refreshJwtToken(
-            phoneNo: phoneNo, 
-            roleId: roleId
+              phoneNo: phoneNo,
+              roleId: roleId
           );
-          
+
           if (refreshResult['success'] == true) {
             debugPrint('✅ Token refreshed successfully, retrying apply for job...');
-            
+
             // Retry the request with new token
             final newToken = await getJwtToken();
             final retryResponse = await http.post(
@@ -1024,21 +1115,22 @@ class ApiService {
               },
               body: jsonEncode(requestBody),
             );
-            
+
             debugPrint('🔄 Retry response status: ${retryResponse.statusCode}');
             debugPrint('🔄 Retry response body: ${retryResponse.body}');
-            
+
             if (retryResponse.statusCode == 200) {
               debugPrint('✅ Successfully applied for job after token refresh: $jobId');
               return {
                 'success': true,
                 'message': 'Successfully applied for job',
                 'data': retryResponse.body.isEmpty ? null : jsonDecode(retryResponse.body),
+                'jobId': jobId, // Include jobId in response
               };
             }
           }
         }
-        
+
         return {
           'success': false,
           'message': 'Authentication failed. Please login again.',
@@ -1058,6 +1150,152 @@ class ApiService {
         'success': false,
         'message': 'Error applying for job: $e',
         'error': e.toString(),
+      };
+    }
+  }
+
+
+  static Future<Map<String, dynamic>> getAllJobApplicants({
+    required String jobId,
+    int pageNumber = 1,
+    int pageSize = 15,
+  }) async {
+    try {
+      final token = await _getStoredJwtToken();
+      if (token == null) {
+        return {
+          'success': false,
+          'message': 'No authentication token found',
+        };
+      }
+
+      final url = Uri.parse('${ApiConstants.baseUrl}api/Job/get-all-job-applicants');
+
+      final requestBody = {
+        'jobId': jobId,
+        'pageNumber': pageNumber,
+        'pageSize': pageSize,
+      };
+
+      debugPrint('🔍 Getting job applicants for jobId: $jobId');
+      debugPrint('🔍 Request body: ${jsonEncode(requestBody)}');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': '*/*',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      debugPrint('🔍 Response status: ${response.statusCode}');
+      debugPrint('🔍 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        if (response.body.isEmpty) {
+          return {
+            'success': true,
+            'message': 'No applicants found',
+            'data': [],
+          };
+        }
+
+        try {
+          final responseData = jsonDecode(response.body);
+          // Extract the data field from the response
+          final List<dynamic> applicantsList = responseData['data'] ?? [];
+          debugPrint('✅ Extracted ${applicantsList.length} applicants from response');
+
+          return {
+            'success': true,
+            'message': 'Job applicants retrieved successfully',
+            'data': applicantsList,
+          };
+        } catch (e) {
+          debugPrint('💥 JSON decode error: $e');
+          return {
+            'success': false,
+            'message': 'Error parsing response: ${e.toString()}',
+          };
+        }
+      } else if (response.statusCode == 401) {
+        debugPrint('🔐 Unauthorized - attempting token refresh...');
+
+        final phoneNo = await getUserPhone();
+        final roleId = await getUserRole();
+
+        if (phoneNo != null && roleId != null) {
+          debugPrint('🔄 Attempting token refresh with phone: $phoneNo, role: $roleId');
+          final refreshResult = await refreshJwtToken(
+              phoneNo: phoneNo,
+              roleId: roleId
+          );
+
+          if (refreshResult['success'] == true) {
+            debugPrint('✅ Token refreshed successfully, retrying get job applicants...');
+
+            final newToken = await _getStoredJwtToken();
+            final retryResponse = await http.post(
+              url,
+              headers: {
+                'Authorization': 'Bearer $newToken',
+                'Accept': '*/*',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(requestBody),
+            );
+
+            debugPrint('🔄 Retry response status: ${retryResponse.statusCode}');
+            debugPrint('🔄 Retry response body: ${retryResponse.body}');
+
+            if (retryResponse.statusCode == 200) {
+              if (retryResponse.body.isEmpty) {
+                return {
+                  'success': true,
+                  'message': 'No applicants found',
+                  'data': [],
+                };
+              }
+
+              try {
+                final responseData = jsonDecode(retryResponse.body);
+                // Extract the data field from the response
+                final List<dynamic> applicantsList = responseData['data'] ?? [];
+                debugPrint('✅ Extracted ${applicantsList.length} applicants from retry response');
+
+                return {
+                  'success': true,
+                  'message': 'Job applicants retrieved successfully',
+                  'data': applicantsList,
+                };
+              } catch (e) {
+                debugPrint('💥 JSON decode error on retry: $e');
+                return {
+                  'success': false,
+                  'message': 'Error parsing response: ${e.toString()}',
+                };
+              }
+            }
+          }
+        }
+
+        return {
+          'success': false,
+          'message': 'Unauthorized - please login again',
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Failed to get job applicants: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      debugPrint('💥 Exception getting job applicants: $e');
+      return {
+        'success': false,
+        'message': 'Error getting job applicants: ${e.toString()}',
       };
     }
   }

@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../Customer/home/presentation/widgets/home_header.dart';
@@ -12,6 +11,7 @@ import '../widgets/worker_search_bar.dart';
 import '../widgets/worker_loading_widget.dart';
 import '../widgets/worker_error_widget.dart';
 import '../widgets/worker_empty_widget.dart';
+import '../widgets/pagination_widget.dart';
 
 class WorkerHomePage extends StatefulWidget {
   const WorkerHomePage({super.key});
@@ -25,7 +25,10 @@ class _WorkerHomePageState extends State<WorkerHomePage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final workerProvider = Provider.of<WorkerProvider>(context, listen: false);
+      final workerProvider = Provider.of<WorkerProvider>(
+        context,
+        listen: false,
+      );
       workerProvider.loadAvailableJobs();
     });
   }
@@ -34,144 +37,6 @@ class _WorkerHomePageState extends State<WorkerHomePage> {
     final workerProvider = Provider.of<WorkerProvider>(context, listen: false);
     workerProvider.refreshJobs();
   }
-
-  void _handleJobTap(BuildContext context, Map<String, dynamic> job) {
-    // Show job details dialog or navigate to job details page
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Text(
-            job["title"] ?? job["jobTitle"] ?? "Job Details",
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (job["description"] != null) ...[
-                const Text(
-                  "Description:",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  job["description"],
-                  style: const TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 16),
-              ],
-              Row(
-                children: [
-                  Icon(Icons.location_on, size: 16, color: Colors.blue.shade600),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      job["address"] ?? "No address",
-                      style: TextStyle(
-                        color: Colors.blue.shade600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.access_time, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 8),
-                  Text(
-                    "${job["time"]?.toString() ?? "0"} mins away",
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.straighten, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 8),
-                  Text(
-                    "${job["distanceKm"]?.toString() ?? job["distance"]?.toString() ?? "0"} km away",
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-              if (job["fee"] != null) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(Icons.attach_money, size: 16, color: Colors.green.shade600),
-                    const SizedBox(width: 8),
-                    Text(
-                      "Fee: ${job["fee"]}",
-                      style: TextStyle(
-                        color: Colors.green.shade600,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text(
-                "Close",
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // TODO: Implement job application logic
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Job application feature coming soon!"),
-                    backgroundColor: Colors.blue,
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text(
-                "Apply",
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-
-
 
 
   @override
@@ -208,7 +73,33 @@ class _WorkerHomePageState extends State<WorkerHomePage> {
                           right: 0,
                           bottom: 0,
                           child: WorkerContentContainer(
-                            child: _buildJobList(workerProvider),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: _buildJobList(workerProvider),
+                                  ),
+
+                                  // Pagination Widget inside the same white container
+                                  if (workerProvider.availableJobs.isNotEmpty &&
+                                      !workerProvider.isLoadingJobs)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: PaginationWidget(
+                                        currentPage: workerProvider.currentPage,
+                                        totalPages: workerProvider.totalPages,
+                                        totalItems: workerProvider.totalItems,
+                                        itemsPerPage: workerProvider.pageSize,
+                                        isLoading: workerProvider.isLoadingMore,
+                                        onPrevious: workerProvider.goToPreviousPage,
+                                        onNext: workerProvider.goToNextPage,
+                                        onPageSelected: workerProvider.goToPage,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                         Positioned(
@@ -244,32 +135,27 @@ class _WorkerHomePageState extends State<WorkerHomePage> {
     }
 
     if (workerProvider.availableJobs.isEmpty) {
-      return WorkerEmptyWidget(
-        onRetry: _refreshJobs,
-      );
+      return WorkerEmptyWidget(onRetry: _refreshJobs);
     }
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        _refreshJobs();
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: workerProvider.availableJobs.length,
+      itemBuilder: (context, index) {
+        final job = workerProvider.availableJobs[index];
+        return AvailableJobCard(
+          name: job["title"] ?? job["jobTitle"] ?? "Job Title",
+          address: job["address"] ?? "No address",
+          rating: (job["rating"] ?? 0).toDouble(),
+          totalJobs: job["totalJobs"] ?? 0,
+          distance:
+              "${job["distanceKm"]?.toString() ?? job["distance"]?.toString() ?? "0"} km",
+          time: "${job["time"]?.toString() ?? "0"} mins",
+          profileImageUrl:
+              job["profileImageUrl"] ?? job["customerProfileImage"],
+          jobData: job,
+        );
       },
-      child: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: workerProvider.availableJobs.length,
-        itemBuilder: (context, index) {
-          final job = workerProvider.availableJobs[index];
-          return AvailableJobCard(
-            name: job["title"] ?? job["jobTitle"] ?? "Job Title",
-            address: job["address"] ?? "No address",
-            rating: (job["rating"] ?? 0).toDouble(),
-            totalJobs: job["totalJobs"] ?? 0,
-            distance: "${job["distanceKm"]?.toString() ?? job["distance"]?.toString() ?? "0"} km",
-            time: "${job["time"]?.toString() ?? "0"} mins",
-            profileImageUrl: job["profileImageUrl"] ?? job["customerProfileImage"],
-            jobData: job,
-          );
-        },
-      ),
     );
   }
 }
