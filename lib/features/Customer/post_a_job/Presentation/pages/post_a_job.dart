@@ -10,6 +10,7 @@ import 'package:video_compress/video_compress.dart';
 import '../../../../../core/services/api_service.dart';
 import '../../../providers/customer_provider.dart';
 import '../../../service_search/presentation/pages/service_search_page.dart';
+import '../../../AcceptRequest/presentation/pages/Accept_Request.dart';
 import '../widgets/chat.dart';
 
 
@@ -38,7 +39,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
       if (widget.preselectedServiceKey != null) {
+        // Only set if it's a valid service key
+        const validServiceKeys = {1, 2, 3, 4, 5, 99};
+        if (validServiceKeys.contains(widget.preselectedServiceKey)) {
         customerProvider.setSelectedServiceKey(widget.preselectedServiceKey);
+        }
       }
     });
   }
@@ -265,7 +270,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
   Future<void> _submitJob() async {
     final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
-    
+
+    // ====== VALIDATIONS ======
     if (customerProvider.titleController.text.trim().isEmpty) {
       _showErrorSnackBar('Please enter a job title');
       return;
@@ -314,6 +320,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
     customerProvider.setLoading(true);
 
     try {
+      // ====== TOKEN ======
       final token = await ApiService.getJwtToken();
       if (token == null) {
         _showErrorSnackBar('Please login to post a job');
@@ -321,13 +328,11 @@ class _PostJobScreenState extends State<PostJobScreen> {
         return;
       }
 
-      
+      // ====== LOCATION PERMISSION ======
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         await Geolocator.openLocationSettings();
-        
         await Future.delayed(const Duration(seconds: 2));
-        
         serviceEnabled = await Geolocator.isLocationServiceEnabled();
         if (!serviceEnabled) {
           _showErrorSnackBar('GPS is not enabled. Please enable location services and try again.');
@@ -352,6 +357,7 @@ class _PostJobScreenState extends State<PostJobScreen> {
         return;
       }
 
+      // ====== GET CURRENT LOCATION ======
       Position position;
       try {
         position = await Geolocator.getCurrentPosition(
@@ -367,7 +373,8 @@ class _PostJobScreenState extends State<PostJobScreen> {
       final lat = position.latitude;
       final lng = position.longitude;
 
-
+      // ====== API CALL ======
+      debugPrint('🚀 Submitting job creation request...');
       final result = await ApiService.createJob(
         title: customerProvider.titleController.text.trim(),
         description: customerProvider.descriptionController.text.trim(),
@@ -385,41 +392,40 @@ class _PostJobScreenState extends State<PostJobScreen> {
 
       customerProvider.setLoading(false);
 
+      // ====== RESPONSE HANDLING ======
       if (result['success']) {
-        // Clear all fields through provider
+        debugPrint('🎯 Job created successfully!');
+        debugPrint('🎯 Full API response: $result');
+
+        // Clear fields
         customerProvider.clearAllFields();
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: const Text("Success"),
-              content: const Text("Your job has been posted successfully!"),
-            );
-          },
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Job posted successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
         );
 
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) {
-            Navigator.pop(context);
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const ServiceSearchPage()),
-            );
-          }
-        });
+        // Navigate to AcceptRequestScreen without jobId
+        // jobId will be available when workers apply for the job
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => AcceptRequestScreen(jobId: 'default-job-id')),
+              (route) => false,
+         );
       } else {
         _showErrorSnackBar(result['error'] ?? 'Failed to post job');
       }
-
     } catch (e, stackTrace) {
+      debugPrint('❌ Error in _submitJob: $e');
+      debugPrint(stackTrace.toString());
       customerProvider.setLoading(false);
       _showErrorSnackBar('Error: $e');
     }
   }
+
 
 
   void _showErrorSnackBar(String message) {
@@ -430,6 +436,78 @@ class _PostJobScreenState extends State<PostJobScreen> {
         duration: const Duration(seconds: 3),
       ),
     );
+  }
+
+  // Get service items for dropdown - show only preselected service if available
+  List<DropdownMenuItem<int>> _getServiceItems(CustomerProvider customerProvider) {
+    // If there's a preselected service key, show only that service
+    if (widget.preselectedServiceKey != null) {
+      // Find the service name for the preselected key
+      final serviceName = _getServiceNameForKey(widget.preselectedServiceKey!);
+      
+      return [
+        DropdownMenuItem<int>(
+          value: widget.preselectedServiceKey,
+          child: Text(serviceName),
+        ),
+      ];
+    }
+    
+    // Otherwise, show all service options using our clean mapping
+    return _getAllServiceItems();
+  }
+
+  // Get all service items with unique values
+  List<DropdownMenuItem<int>> _getAllServiceItems() {
+    const serviceOptions = {
+      1: 'Plumber',
+      2: 'Electrician',
+      3: 'Sweeper',
+      4: 'Carpenter',
+      5: 'Painter',
+      99: 'Other',
+    };
+    
+    return serviceOptions.entries.map((entry) {
+      return DropdownMenuItem<int>(
+        value: entry.key,
+        child: Text(entry.value),
+      );
+    }).toList();
+  }
+
+  // Get service name for a given key
+  String _getServiceNameForKey(int key) {
+    const serviceKeyToName = {
+      1: 'Plumber',
+      2: 'Electrician', 
+      3: 'Sweeper',
+      4: 'Carpenter',
+      5: 'Painter',
+      99: 'Other',
+    };
+    
+    return serviceKeyToName[key] ?? 'Unknown Service';
+  }
+
+  // Get valid dropdown value that matches exactly one item in the list
+  int? _getValidDropdownValue(CustomerProvider customerProvider) {
+    const validServiceKeys = {1, 2, 3, 4, 5, 99};
+    
+    // If there's a preselected service key, use it if it's valid
+    if (widget.preselectedServiceKey != null && 
+        validServiceKeys.contains(widget.preselectedServiceKey)) {
+      return widget.preselectedServiceKey;
+    }
+    
+    // If customer provider has a selected service key, use it if it's valid
+    if (customerProvider.selectedServiceKey != null && 
+        validServiceKeys.contains(customerProvider.selectedServiceKey)) {
+      return customerProvider.selectedServiceKey;
+    }
+    
+    // Return null if no valid value is found
+    return null;
   }
 
 
@@ -637,34 +715,37 @@ class _PostJobScreenState extends State<PostJobScreen> {
                             ],
                           ),
                           child: DropdownButtonFormField<int>(
-                            value: customerProvider.selectedServiceKey,
+                            value: _getValidDropdownValue(customerProvider),
                             decoration: InputDecoration(
                               filled: true,
-                              fillColor: Colors.white,
+                              fillColor: widget.preselectedServiceKey != null 
+                                ? Colors.grey[100] 
+                                : Colors.white,
                               hintText: "Select service type",
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFF8DD4FD),
+                                borderSide: BorderSide(
+                                  color: widget.preselectedServiceKey != null 
+                                    ? Colors.grey[300]! 
+                                    : const Color(0xFF8DD4FD),
                                   width: 1.5,
                                 ),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFF8DD4FD),
+                                borderSide: BorderSide(
+                                  color: widget.preselectedServiceKey != null 
+                                    ? Colors.grey[300]! 
+                                    : const Color(0xFF8DD4FD),
                                   width: 2,
                                 ),
                               ),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                             ),
-                            items: customerProvider.allServiceOptions.entries.map((entry) {
-                              return DropdownMenuItem<int>(
-                                value: entry.value,
-                                child: Text(entry.key),
-                              );
-                            }).toList(),
-                            onChanged: (int? value) {
+                            items: _getServiceItems(customerProvider),
+                            onChanged: widget.preselectedServiceKey != null 
+                              ? null // Disable dropdown when service is preselected
+                              : (int? value) {
                               customerProvider.setSelectedServiceKey(value);
                             },
                           ),

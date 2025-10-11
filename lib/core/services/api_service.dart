@@ -849,7 +849,7 @@ class ApiService {
     required double lon,
     int pageNumber = 1,
     int pageSize = 10,
-    double radiusKm = 1000.0,
+    double radiusKm = 4000.0,
 }) async {
     try {
       final url = Uri.parse("${ApiConstants.baseUrl}api/worker-details/get-avaliable-jobs");
@@ -965,6 +965,7 @@ class ApiService {
             'success': true,
             'message': 'Successfully applied for job',
             'data': null,
+            'jobId': jobId, // Include jobId in response
           };
         } else {
           return {
@@ -995,6 +996,7 @@ class ApiService {
           'success': true,
           'message': 'Successfully applied for job',
           'data': data,
+          'jobId': jobId, // Include jobId in response
         };
       } else if (response.statusCode == 401) {
         debugPrint('🔐 Unauthorized (401) - Token may be expired, attempting to refresh...');
@@ -1034,6 +1036,7 @@ class ApiService {
                 'success': true,
                 'message': 'Successfully applied for job',
                 'data': retryResponse.body.isEmpty ? null : jsonDecode(retryResponse.body),
+                'jobId': jobId, // Include jobId in response
               };
             }
           }
@@ -1058,6 +1061,152 @@ class ApiService {
         'success': false,
         'message': 'Error applying for job: $e',
         'error': e.toString(),
+      };
+    }
+  }
+
+
+  static Future<Map<String, dynamic>> getAllJobApplicants({
+    required String jobId,
+    int pageNumber = 1,
+    int pageSize = 15,
+  }) async {
+    try {
+      final token = await _getStoredJwtToken();
+      if (token == null) {
+        return {
+          'success': false,
+          'message': 'No authentication token found',
+        };
+      }
+
+      final url = Uri.parse('${ApiConstants.baseUrl}api/Job/get-all-job-applicants');
+      
+      final requestBody = {
+        'jobId': jobId,
+        'pageNumber': pageNumber,
+        'pageSize': pageSize,
+      };
+
+      debugPrint('🔍 Getting job applicants for jobId: $jobId');
+      debugPrint('🔍 Request body: ${jsonEncode(requestBody)}');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': '*/*',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      debugPrint('🔍 Response status: ${response.statusCode}');
+      debugPrint('🔍 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        if (response.body.isEmpty) {
+          return {
+            'success': true,
+            'message': 'No applicants found',
+            'data': [],
+          };
+        }
+
+        try {
+          final responseData = jsonDecode(response.body);
+          // Extract the data field from the response
+          final List<dynamic> applicantsList = responseData['data'] ?? [];
+          debugPrint('✅ Extracted ${applicantsList.length} applicants from response');
+          
+          return {
+            'success': true,
+            'message': 'Job applicants retrieved successfully',
+            'data': applicantsList,
+          };
+        } catch (e) {
+          debugPrint('💥 JSON decode error: $e');
+          return {
+            'success': false,
+            'message': 'Error parsing response: ${e.toString()}',
+          };
+        }
+      } else if (response.statusCode == 401) {
+        debugPrint('🔐 Unauthorized - attempting token refresh...');
+        
+        final phoneNo = await getUserPhone();
+        final roleId = await getUserRole();
+        
+        if (phoneNo != null && roleId != null) {
+          debugPrint('🔄 Attempting token refresh with phone: $phoneNo, role: $roleId');
+          final refreshResult = await refreshJwtToken(
+            phoneNo: phoneNo, 
+            roleId: roleId
+          );
+          
+          if (refreshResult['success'] == true) {
+            debugPrint('✅ Token refreshed successfully, retrying get job applicants...');
+            
+            final newToken = await _getStoredJwtToken();
+            final retryResponse = await http.post(
+              url,
+              headers: {
+                'Authorization': 'Bearer $newToken',
+                'Accept': '*/*',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(requestBody),
+            );
+            
+            debugPrint('🔄 Retry response status: ${retryResponse.statusCode}');
+            debugPrint('🔄 Retry response body: ${retryResponse.body}');
+            
+            if (retryResponse.statusCode == 200) {
+              if (retryResponse.body.isEmpty) {
+                return {
+                  'success': true,
+                  'message': 'No applicants found',
+                  'data': [],
+                };
+              }
+              
+              try {
+                final responseData = jsonDecode(retryResponse.body);
+                // Extract the data field from the response
+                final List<dynamic> applicantsList = responseData['data'] ?? [];
+                debugPrint('✅ Extracted ${applicantsList.length} applicants from retry response');
+                
+                return {
+                  'success': true,
+                  'message': 'Job applicants retrieved successfully',
+                  'data': applicantsList,
+                };
+              } catch (e) {
+                debugPrint('💥 JSON decode error on retry: $e');
+                return {
+                  'success': false,
+                  'message': 'Error parsing response: ${e.toString()}',
+                };
+              }
+            }
+          }
+        }
+        
+        return {
+          'success': false,
+          'message': 'Unauthorized - please login again',
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Failed to get job applicants: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      debugPrint('💥 Exception getting job applicants: $e');
+      return {
+        'success': false,
+        'message': 'Error getting job applicants: ${e.toString()}',
       };
     }
   }

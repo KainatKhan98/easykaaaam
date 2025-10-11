@@ -1,10 +1,12 @@
-
 import 'package:flutter/material.dart';
-
+import '../../../AcceptRequest/presentation/pages/Accept_Request.dart';
 import '../../../home/presentation/widgets/home_header.dart';
 
+
 class ServiceSearchPage extends StatefulWidget {
-  const ServiceSearchPage({super.key});
+  final String? jobId; // Optional job ID to view applicants
+  
+  const ServiceSearchPage({super.key, this.jobId});
 
   @override
   State<ServiceSearchPage> createState() => _ServiceSearchPageState();
@@ -12,6 +14,65 @@ class ServiceSearchPage extends StatefulWidget {
 
 class _ServiceSearchPageState extends State<ServiceSearchPage> {
   final TextEditingController _helpController = TextEditingController();
+  int _countdown = 3;
+
+  @override
+  void initState() {
+    super.initState();
+
+    print('🎯 ServiceSearchPage: Starting 3-second timer...');
+    print('🎯 ServiceSearchPage: jobId value: ${widget.jobId}');
+    
+    // Start countdown timer
+    _startCountdown();
+    
+    Future.delayed(const Duration(seconds: 3), () {
+      print('🎯 ServiceSearchPage: 3 seconds elapsed, checking for valid jobId...');
+      print('🎯 ServiceSearchPage: Widget mounted: $mounted');
+      print('🎯 ServiceSearchPage: Context valid: ${context.mounted}');
+      
+      if (mounted && context.mounted) {
+        // Only navigate to AcceptRequestScreen if we have a valid jobId
+        if (widget.jobId != null && widget.jobId!.isNotEmpty && widget.jobId != 'default-job-id') {
+          try {
+            print('🎯 ServiceSearchPage: Valid jobId found, navigating to AcceptRequestScreen with jobId: ${widget.jobId}');
+            
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => AcceptRequestScreen(
+                  jobId: widget.jobId!,
+                ),
+              ),
+            );
+            print('🎯 ServiceSearchPage: Navigation completed successfully');
+          } catch (e) {
+            print('🎯 ServiceSearchPage: Navigation failed with error: $e');
+          }
+        } else {
+          print('🎯 ServiceSearchPage: No valid jobId available, staying on ServiceSearchPage');
+          print('🎯 ServiceSearchPage: jobId value: ${widget.jobId}');
+          print('🎯 ServiceSearchPage: Waiting for workers to apply for the job...');
+        }
+      } else {
+        print('🎯 ServiceSearchPage: Widget not mounted or context invalid, skipping navigation');
+        print('🎯 ServiceSearchPage: mounted: $mounted, context.mounted: ${context.mounted}');
+      }
+    });
+  }
+
+  void _startCountdown() {
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) {
+        setState(() {
+          _countdown--;
+        });
+        if (_countdown > 0) {
+          _startCountdown();
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,9 +88,6 @@ class _ServiceSearchPageState extends State<ServiceSearchPage> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         resizeToAvoidBottomInset: true,
-
-
-
         body: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -44,7 +102,6 @@ class _ServiceSearchPageState extends State<ServiceSearchPage> {
                   width: 259,
                 ),
               ),
-
               Expanded(
                 child: Stack(
                   alignment: Alignment.topCenter,
@@ -60,9 +117,7 @@ class _ServiceSearchPageState extends State<ServiceSearchPage> {
                           image: const DecorationImage(
                             image: AssetImage("assets/services/subservices/map 2.png"),
                             fit: BoxFit.cover,
-
                           ),
-
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.1),
@@ -71,31 +126,67 @@ class _ServiceSearchPageState extends State<ServiceSearchPage> {
                             ),
                           ],
                         ),
-                        child: SingleChildScrollView(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 20),
-
-                                GridView.count(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  crossAxisCount: 2,
-                                  mainAxisSpacing: 16,
-                                  crossAxisSpacing: 16,
-                                  childAspectRatio: 1,
-                                  children: const [
-                                  ],
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                "Finding Nearby Electricians...",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(height: 20),
+                              Text(
+                                (widget.jobId != null && widget.jobId!.isNotEmpty && widget.jobId != 'default-job-id')
+                                    ? "Redirecting to view applicants in $_countdown seconds..."
+                                    : "Waiting for workers to apply for your job...",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              ElevatedButton(
+                                onPressed: (widget.jobId != null && widget.jobId!.isNotEmpty && widget.jobId != 'default-job-id') ? () {
+                                  print('🎯 ServiceSearchPage: Manual navigation triggered with valid jobId: ${widget.jobId}');
+                                  try {
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => AcceptRequestScreen(
+                                          jobId: widget.jobId!,
+                                        ),
+                                      ),
+                                    );
+                                  } catch (e) {
+                                    print('🎯 ServiceSearchPage: Manual navigation failed: $e');
+                                  }
+                                } : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: (widget.jobId != null && widget.jobId!.isNotEmpty && widget.jobId != 'default-job-id') 
+                                      ? Colors.white 
+                                      : Colors.grey,
+                                  foregroundColor: (widget.jobId != null && widget.jobId!.isNotEmpty && widget.jobId != 'default-job-id')
+                                      ? const Color(0xFF8DD4FD)
+                                      : Colors.grey.shade400,
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                ),
+                                child: Text(
+                                  (widget.jobId != null && widget.jobId!.isNotEmpty && widget.jobId != 'default-job-id')
+                                      ? "View Applicants Now"
+                                      : "Waiting for Applicants...",
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
-
                     Positioned(
                       top: 0,
                       child: Container(
@@ -116,7 +207,7 @@ class _ServiceSearchPageState extends State<ServiceSearchPage> {
                           padding: EdgeInsets.all(12.0),
                           child: TextField(
                             decoration: InputDecoration(
-                              hintText: "Searching Nearby Electrician",
+                              hintText: "Searching Nearby Electrician...",
                               hintStyle: TextStyle(color: Colors.black54),
                               border: InputBorder.none,
                               prefixIcon: Padding(
@@ -126,7 +217,9 @@ class _ServiceSearchPageState extends State<ServiceSearchPage> {
                                   width: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.black54),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.black54,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -135,7 +228,6 @@ class _ServiceSearchPageState extends State<ServiceSearchPage> {
                         ),
                       ),
                     )
-
                   ],
                 ),
               ),

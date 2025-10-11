@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sms_autofill/sms_autofill.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/services/api_service.dart';
 import '../widgets/Custom_otp_field.dart';
@@ -19,7 +18,7 @@ class OtpScreen extends StatefulWidget {
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
+class _OtpScreenState extends State<OtpScreen> {
   bool isSmsSelected = true;
   String enteredOtp = "";
   bool isLoading = false;
@@ -27,30 +26,11 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
   @override
   void initState() {
     super.initState();
-    _initializeSmsAutofill();
-  }
-
-  Future<void> _initializeSmsAutofill() async {
-    await SmsAutoFill().listenForCode;
-    await SmsAutoFill().hint;
   }
 
   @override
   void dispose() {
-    cancel();
     super.dispose();
-  }
-
-
-  @override
-  void codeUpdated() {
-    final receivedCode = code!;
-    if (receivedCode.length == 6) {
-      setState(() {
-        enteredOtp = receivedCode;
-      });
-      verifyOtp();
-    }
   }
 
   Future<void> verifyOtp() async {
@@ -89,18 +69,26 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
     return GradientContainer(
       child: Scaffold(
         backgroundColor: Colors.transparent,
         resizeToAvoidBottomInset: true,
         body: SafeArea(
-          child: Column(
-            children: [
-              const SizedBox(height: 50),
-              _buildLogo(),
-              const SizedBox(height: 30),
-              Expanded(child: _buildContentContainer()),
-            ],
+          child: SingleChildScrollView(
+            child: SizedBox(
+              height: size.height,
+              width: size.width,
+              child: Column(
+                children: [
+                  const SizedBox(height: 50),
+                  _buildLogo(),
+                  const SizedBox(height: 30),
+                  Expanded(child: _buildContentContainer()),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -111,30 +99,30 @@ class _OtpScreenState extends State<OtpScreen> with CodeAutoFill {
 
   Widget _buildContentContainer() {
     return ContentContainer(
-        child: Column(
-          children: [
-            const SizedBox(height: 60),
+      child: Column(
+        children: [
+          const SizedBox(height: 60),
           AuthTitle(
             title: "Enter Verification Code",
             subtitle: "Enter code we've sent to your number via SMS",
           ),
-            const SizedBox(height: 50),
-            CustomOtpFields(onChanged: (value) => enteredOtp = value),
-            const SizedBox(height: 30),
+          const SizedBox(height: 50),
+          CustomOtpFields(onChanged: (value) => enteredOtp = value),
+          const SizedBox(height: 30),
           ResendRow(
             phoneNo: widget.phoneNo,
             isSmsSelected: isSmsSelected,
             onResend: () => _showSnackBar("OTP resent to ${widget.phoneNo}"),
             onToggle: () => setState(() => isSmsSelected = !isSmsSelected),
           ),
-            const SizedBox(height: 30),
-            AuthButton(
-              text: isLoading ? "Verifying..." : "Verify OTP",
-              color: const Color(AppConstants.primaryBlue),
-              onPressed: isLoading ? null : verifyOtp,
-            ),
-            const SizedBox(height: 30),
-          ],
+          const SizedBox(height: 30),
+          AuthButton(
+            text: isLoading ? "Verifying..." : "Verify OTP",
+            color: const Color(AppConstants.primaryBlue),
+            onPressed: isLoading ? null : verifyOtp,
+          ),
+          const SizedBox(height: 30),
+        ],
       ),
     );
   }
